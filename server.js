@@ -1,66 +1,66 @@
-/**
- * RUNDOM 代理服务器
- * 转发API请求 + 定时签到签退
- */
-const http = require('http');
-const https = require('https');
-const crypto = require('crypto');
-const fs = require('fs');
+const express = require('express');
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const path = require('path');
+const fs = require('fs');
 
-const PORT = process.env.PORT || 8080;
-const API_HOST = 'run-lb.tanmasports.com';
-const APPKEY = '389885588s0648fa';
-const SECRET2 = '56E39A1658455588885690425C0FD16055A21676';
+const app = express();
+const port = process.env.PORT || 8080;
 
-const MIME = {
-    '.html': 'text/html',
-    '.css': 'text/css',
-    '.js': 'application/javascript',
-    '.json': 'application/json',
-    '.svg': 'image/svg+xml'
-};
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// ========== 签名算法 ==========
-function md5(str) {
-    return crypto.createHash('md5').update(str).digest('hex');
-}
-
-function computeSign(params) {
-    const { query = null, body = null } = params;
-    let signStr = '';
-
-    // GET 请求：排序查询参数拼接
-    if (query !== null) {
-        const sortedKeys = Object.keys(query).sort();
-        for (const key of sortedKeys) {
-            const value = query[key] === null ? '' : String(query[key]);
-            if (value !== '') signStr += key + value;
-        }
+app.use((req, res, next) => {
+    if (req.method === 'OPTIONS') {
+        res.set({
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': '*'
+        });
+        res.sendStatus(200);
+    } else {
+        next();
     }
+});
 
-    signStr += APPKEY + SECRET2;
+// 静态文件
+app.use(express.static(path.join(__dirname)));
 
-    // POST 请求：拼接 body
-    if (body !== null) signStr += JSON.stringify(body);
+// API 代理
+app.all('/v1/*', async (req, res) => {
+    const backendUrl = 'https://run-lb.tanmasports.com' + req.originalUrl;
 
-    // 特殊字符处理
-    let replaced = false;
-    const specialChars = [' ', '~', '!', '(', ')', "'"];
-    for (const ch of specialChars) {
-        if (signStr.includes(ch)) {
-            signStr = signStr.split(ch).join('');
-            replaced = true;
-        }
+    const newHeaders = { ...req.headers };
+    delete newHeaders.host;
+
+    const init = {
+        method: req.method,
+        headers: newHeaders,
+        body: req.method === 'GET' ? null : JSON.stringify(req.body)
+    };
+
+    try {
+        const response = await fetch(backendUrl, init);
+        const body = await response.text();
+
+        res.set({
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': '*'
+        });
+
+        res.status(response.status).send(body);
+    } catch (error) {
+        console.error(`Error during fetch: ${error.message}`);
+        res.status(500).json({ code: -1, msg: '请求失败: ' + error.message });
     }
-    if (replaced) signStr = encodeURIComponent(signStr);
+});
 
-    let sign = md5(signStr).toUpperCase();
-    if (replaced) sign += 'encodeutf8';
-    return sign;
-}
+// 健康检查
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok' });
+});
 
-// ========== 定时任务存储 ==========
+// 定时任务存储
 const scheduledTasks = new Map();
 const TASKS_FILE = path.join(__dirname, 'data', 'scheduled_tasks.json');
 
@@ -110,26 +110,54 @@ function restoreTasks() {
 function scheduleSignTask(taskId, taskData, signInDelay) {
     const signInTimer = setTimeout(async () => {
         console.log('[定时签到] 执行中...');
-        const result = await apiPost('/v1/clubactivity/signInOrSignBack', {
-            activityId: Number(taskData.activityId),
-            latitude: String(taskData.location.lat),
-            longitude: String(taskData.location.lng),
-            signType: '1',
-            studentId: Number(taskData.studentId)
-        }, taskData.token);
-        console.log('[定时签到] 结果:', JSON.stringify(result));
+        try {
+            const response = await fetch('https://run-lb.tanmasports.com/v1/clubactivity/signInOrSignBack', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json; charset=UTF-8',
+                    'sign': taskData.sign || '',
+                    'token': taskData.token || '',
+                    'appkey': taskData.appkey || ''
+                },
+                body: JSON.stringify({
+                    activityId: Number(taskData.activityId),
+                    latitude: String(taskData.location.lat),
+                    longitude: String(taskData.location.lng),
+                    signType: '1',
+                    studentId: Number(taskData.studentId)
+                })
+            });
+            const result = await response.json();
+            console.log('[定时签到] 结果:', JSON.stringify(result));
+        } catch (e) {
+            console.error('[定时签到] 失败:', e.message);
+        }
 
         // 签到后30分钟自动签退
         const signOutTimer = setTimeout(async () => {
             console.log('[定时签退] 执行中...');
-            const result2 = await apiPost('/v1/clubactivity/signInOrSignBack', {
-                activityId: Number(taskData.activityId),
-                latitude: String(taskData.location.lat),
-                longitude: String(taskData.location.lng),
-                signType: '2',
-                studentId: Number(taskData.studentId)
-            }, taskData.token);
-            console.log('[定时签退] 结果:', JSON.stringify(result2));
+            try {
+                const response = await fetch('https://run-lb.tanmasports.com/v1/clubactivity/signInOrSignBack', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json; charset=UTF-8',
+                        'sign': taskData.sign || '',
+                        'token': taskData.token || '',
+                        'appkey': taskData.appkey || ''
+                    },
+                    body: JSON.stringify({
+                        activityId: Number(taskData.activityId),
+                        latitude: String(taskData.location.lat),
+                        longitude: String(taskData.location.lng),
+                        signType: '2',
+                        studentId: Number(taskData.studentId)
+                    })
+                });
+                const result = await response.json();
+                console.log('[定时签退] 结果:', JSON.stringify(result));
+            } catch (e) {
+                console.error('[定时签退] 失败:', e.message);
+            }
             scheduledTasks.delete(taskId);
             saveTasks();
         }, 30 * 60 * 1000);
@@ -151,223 +179,68 @@ function scheduleSignTask(taskId, taskData, signInDelay) {
 
 restoreTasks();
 
-// ========== 直连 API 请求 ==========
-function makeRequest(apiPath, method, headers, jsonBody) {
-    return new Promise((resolve, reject) => {
-        const options = {
-            hostname: API_HOST,
-            port: 443,
-            path: apiPath,
-            method,
-            headers
-        };
-        const req = https.request(options, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-                try { resolve(JSON.parse(data)); } catch (e) {
-                    console.log(`[API] JSON 解析失败:`, data.substring(0, 100));
-                    reject(new Error('Invalid JSON response'));
-                }
-            });
-        });
-        req.on('error', (e) => reject(e));
-        req.setTimeout(10000, () => {
-            req.destroy();
-            reject(new Error('timeout'));
-        });
-        if (jsonBody) req.write(jsonBody);
-        req.end();
+// 定时任务 API
+app.post('/api/schedule/start', (req, res) => {
+    const { userId, token, studentId, activityId, signInTime, location, sign, appkey } = req.body;
+    const taskId = `task_${userId}_${Date.now()}`;
+
+    const now = new Date();
+    const signInDate = new Date(signInTime);
+    const signInDelay = signInDate.getTime() - now.getTime();
+
+    if (signInDelay <= 0) {
+        return res.json({ code: -1, msg: '签到时间已过' });
+    }
+
+    const signOutDate = new Date(signInDate.getTime() + 30 * 60 * 1000);
+
+    scheduleSignTask(taskId, {
+        userId, token, studentId, activityId, signInTime: signInDate.toISOString(), location, sign, appkey
+    }, signInDelay);
+
+    saveTasks();
+
+    res.json({
+        code: 10000,
+        msg: '定时任务已设置',
+        taskId,
+        signInTime: signInDate.toLocaleString(),
+        signOutTime: signOutDate.toLocaleString()
     });
-}
-
-function apiPost(apiPath, body, token) {
-    const jsonBody = JSON.stringify(body);
-    const sign = computeSign({ body });
-    const headers = {
-        'Content-Type': 'application/json; charset=UTF-8',
-        'sign': sign,
-        'token': token || '',
-        'appkey': APPKEY
-    };
-    return makeRequest(apiPath, 'POST', headers, jsonBody);
-}
-
-function apiGet(apiPath, query, token) {
-    const sign = computeSign({ query });
-    const headers = {
-        'Content-Type': 'application/json; charset=UTF-8',
-        'sign': sign,
-        'token': token || '',
-        'appkey': APPKEY
-    };
-    const qs = Object.entries(query)
-        .filter(([, v]) => v !== undefined && v !== null && v !== '')
-        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-        .join('&');
-    const fullPath = qs ? `${apiPath}?${qs}` : apiPath;
-    return makeRequest(fullPath, 'GET', headers, null);
-}
-
-// ========== 静态文件 ==========
-function serveStatic(req, res) {
-    let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url.split('?')[0]);
-    const ext = path.extname(filePath);
-    const contentType = MIME[ext] || 'application/octet-stream';
-
-    fs.readFile(filePath, (err, data) => {
-        if (err) {
-            res.writeHead(404);
-            res.end('Not Found');
-            return;
-        }
-        res.writeHead(200, { 'Content-Type': contentType });
-        res.end(data);
-    });
-}
-
-function jsonResponse(res, data) {
-    res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-    });
-    res.end(JSON.stringify(data));
-}
-
-// ========== 路由 ==========
-const server = http.createServer((req, res) => {
-    if (req.method === 'OPTIONS') {
-        res.writeHead(200, {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type'
-        });
-        res.end();
-        return;
-    }
-
-    // 健康检查
-    if (req.url === '/api/health') {
-        return jsonResponse(res, { status: 'ok', mode: '直连 API' });
-    }
-
-    // ========== 代理 GET 请求 ==========
-    if (req.method === 'GET' && req.url.startsWith('/v1/')) {
-        const urlObj = new URL(req.url, 'http://localhost');
-        const apiPath = urlObj.pathname;
-        const query = Object.fromEntries(urlObj.searchParams);
-        const token = query._token || '';
-        delete query._token;
-
-        apiGet(apiPath, query, token)
-            .then(data => jsonResponse(res, data))
-            .catch(e => {
-                console.error('GET proxy error:', e.message);
-                jsonResponse(res, { code: -1, msg: '请求失败: ' + e.message });
-            });
-        return;
-    }
-
-    // ========== 代理 POST 请求 ==========
-    if (req.method === 'POST' && req.url.startsWith('/v1/')) {
-        let body = '';
-        req.on('data', chunk => body += chunk);
-        req.on('end', async () => {
-            try {
-                const data = JSON.parse(body);
-                const token = data._token || '';
-                delete data._token;
-
-                const result = await apiPost(req.url, data, token);
-                jsonResponse(res, result);
-            } catch (e) {
-                console.error('POST proxy error:', e.message);
-                jsonResponse(res, { code: -1, msg: '请求失败: ' + e.message });
-            }
-        });
-        return;
-    }
-
-    // ========== 定时任务 API ==========
-    if (req.url.startsWith('/api/schedule/')) {
-        let body = '';
-        req.on('data', chunk => body += chunk);
-        req.on('end', async () => {
-            try {
-                const data = JSON.parse(body);
-
-                if (req.url === '/api/schedule/start') {
-                    const { userId, token, studentId, activityId, signInTime, location } = data;
-                    const taskId = `task_${userId}_${Date.now()}`;
-
-                    const now = new Date();
-                    const signInDate = new Date(signInTime);
-                    const signInDelay = signInDate.getTime() - now.getTime();
-
-                    if (signInDelay <= 0) {
-                        return jsonResponse(res, { code: -1, msg: '签到时间已过' });
-                    }
-
-                    const signOutDate = new Date(signInDate.getTime() + 30 * 60 * 1000);
-
-                    scheduleSignTask(taskId, {
-                        userId, token, studentId, activityId, signInTime: signInDate.toISOString(), location
-                    }, signInDelay);
-
-                    saveTasks();
-
-                    return jsonResponse(res, {
-                        code: 10000,
-                        msg: '定时任务已设置',
-                        taskId,
-                        signInTime: signInDate.toLocaleString(),
-                        signOutTime: signOutDate.toLocaleString()
-                    });
-                }
-
-                if (req.url === '/api/schedule/stop') {
-                    const { taskId } = data;
-                    const task = scheduledTasks.get(taskId);
-                    if (task) {
-                        clearTimeout(task.signInTimer);
-                        if (task.signOutTimer) clearTimeout(task.signOutTimer);
-                        scheduledTasks.delete(taskId);
-                        saveTasks();
-                        return jsonResponse(res, { code: 10000, msg: '定时任务已停止' });
-                    }
-                    return jsonResponse(res, { code: -1, msg: '任务不存在' });
-                }
-
-                if (req.url === '/api/schedule/status') {
-                    const { userId } = data;
-                    const userTasks = [];
-                    scheduledTasks.forEach((task, taskId) => {
-                        if (task.userId === userId) {
-                            const signInDate = new Date(task.signInTime);
-                            const signOutDate = new Date(signInDate.getTime() + 30 * 60 * 1000);
-                            userTasks.push({
-                                taskId,
-                                signInTime: signInDate.toLocaleString(),
-                                signOutTime: signOutDate.toLocaleString(),
-                                activityId: task.activityId,
-                                location: task.location
-                            });
-                        }
-                    });
-                    return jsonResponse(res, { code: 10000, tasks: userTasks });
-                }
-
-                jsonResponse(res, { code: -1, msg: '未知API' });
-            } catch (e) {
-                jsonResponse(res, { code: -1, msg: '请求格式错误' });
-            }
-        });
-        return;
-    }
-
-    serveStatic(req, res);
 });
 
-server.listen(PORT, () => {
-    console.log(`RUNDOM server running at http://localhost:${PORT}`);
+app.post('/api/schedule/stop', (req, res) => {
+    const { taskId } = req.body;
+    const task = scheduledTasks.get(taskId);
+    if (task) {
+        clearTimeout(task.signInTimer);
+        if (task.signOutTimer) clearTimeout(task.signOutTimer);
+        scheduledTasks.delete(taskId);
+        saveTasks();
+        return res.json({ code: 10000, msg: '定时任务已停止' });
+    }
+    res.json({ code: -1, msg: '任务不存在' });
+});
+
+app.post('/api/schedule/status', (req, res) => {
+    const { userId } = req.body;
+    const userTasks = [];
+    scheduledTasks.forEach((task, taskId) => {
+        if (task.userId === userId) {
+            const signInDate = new Date(task.signInTime);
+            const signOutDate = new Date(signInDate.getTime() + 30 * 60 * 1000);
+            userTasks.push({
+                taskId,
+                signInTime: signInDate.toLocaleString(),
+                signOutTime: signOutDate.toLocaleString(),
+                activityId: task.activityId,
+                location: task.location
+            });
+        }
+    });
+    res.json({ code: 10000, tasks: userTasks });
+});
+
+app.listen(port, () => {
+    console.log(`RUNDOM server running at http://localhost:${port}`);
 });

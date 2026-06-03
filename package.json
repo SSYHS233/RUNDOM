@@ -4,9 +4,13 @@
     "description": "RUNDOM - 跑步打卡 + 俱乐部签到签退助手",
     "main": "server.js",
     "scripts": {
-        "start": "node server.js"
+        "start": "npm install && node server.js"
     },
     "engines": {
         "node": ">=14"
+    },
+    "dependencies": {
+        "express": "^4.21.1",
+        "node-fetch": "^3.3.2"
     }
 }
