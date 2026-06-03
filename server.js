@@ -242,8 +242,8 @@ function apiGet(apiPath, query, token) {
         .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
         .join('&');
     const fullPath = qs ? `${apiPath}?${qs}` : apiPath;
-    const target = resolveTarget();
-    return makeRequest(target.hostname, target.port, fullPath, 'GET', headers, null, !CF_WORKER_URL);
+    // GET 请求直接连接 API，不通过 CF Worker（CF Worker 只支持 POST）
+    return makeRequest(API_HOST, 443, fullPath, 'GET', headers, null, true);
 }
 
 // ========== 静态文件 ==========
