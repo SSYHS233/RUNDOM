@@ -12,8 +12,6 @@ const PORT = process.env.PORT || 8080;
 const API_HOST = 'run-lb.tanmasports.com';
 const APPKEY = '389885588s0648fa';
 const SECRET2 = '56E39A1658455588885690425C0FD16055A21676';
-// Cloudflare Worker 中转 URL（部署时用，本地为空则直连）
-const CF_WORKER_URL = process.env.CF_WORKER_URL || '';
 
 const MIME = {
     '.html': 'text/html',
@@ -153,67 +151,34 @@ function scheduleSignTask(taskId, taskData, signInDelay) {
 
 restoreTasks();
 
-// ========== WAF/错误检测 ==========
-function isBlockedResponse(data) {
-    // 检测 WAF 拦截
-    if (data.includes('<title>405</title>') || data.includes('aliyun.com')) return true;
-    // 检测非 JSON 响应（HTML、空响应等）
-    const trimmed = data.trim();
-    if (!trimmed || trimmed.startsWith('<') || trimmed.startsWith('<!')) return true;
-    return false;
-}
-
-// ========== API 请求（支持 CF Worker 中转 + 直连回退） ==========
-function makeRequest(hostname, port, apiPath, method, headers, jsonBody, isFallback) {
+// ========== 直连 API 请求 ==========
+function makeRequest(apiPath, method, headers, jsonBody) {
     return new Promise((resolve, reject) => {
-        const options = { hostname, port, path: apiPath, method, headers };
+        const options = {
+            hostname: API_HOST,
+            port: 443,
+            path: apiPath,
+            method,
+            headers
+        };
         const req = https.request(options, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
-                // WAF/错误检测：如果被拦截或返回非 JSON，回退直连
-                if (isBlockedResponse(data) && !isFallback) {
-                    console.log(`[API] CF Worker 响应异常，回退直连 API`);
-                    makeRequest(API_HOST, 443, apiPath, method, headers, jsonBody, true)
-                        .then(resolve).catch(reject);
-                    return;
-                }
                 try { resolve(JSON.parse(data)); } catch (e) {
                     console.log(`[API] JSON 解析失败:`, data.substring(0, 100));
                     reject(new Error('Invalid JSON response'));
                 }
             });
         });
-        req.on('error', (e) => {
-            if (!isFallback) {
-                console.log(`[API] CF Worker 连接失败，回退直连 API:`, e.message);
-                makeRequest(API_HOST, 443, apiPath, method, headers, jsonBody, true)
-                    .then(resolve).catch(reject);
-                return;
-            }
-            reject(e);
-        });
+        req.on('error', (e) => reject(e));
         req.setTimeout(10000, () => {
             req.destroy();
-            if (!isFallback) {
-                console.log(`[API] CF Worker 超时，回退直连 API`);
-                makeRequest(API_HOST, 443, apiPath, method, headers, jsonBody, true)
-                    .then(resolve).catch(reject);
-                return;
-            }
             reject(new Error('timeout'));
         });
         if (jsonBody) req.write(jsonBody);
         req.end();
     });
-}
-
-function resolveTarget() {
-    if (CF_WORKER_URL) {
-        const url = new URL(CF_WORKER_URL);
-        return { hostname: url.hostname, port: url.port || 443 };
-    }
-    return { hostname: API_HOST, port: 443 };
 }
 
 function apiPost(apiPath, body, token) {
@@ -225,8 +190,7 @@ function apiPost(apiPath, body, token) {
         'token': token || '',
         'appkey': APPKEY
     };
-    const target = resolveTarget();
-    return makeRequest(target.hostname, target.port, apiPath, 'POST', headers, jsonBody, !CF_WORKER_URL);
+    return makeRequest(apiPath, 'POST', headers, jsonBody);
 }
 
 function apiGet(apiPath, query, token) {
@@ -242,8 +206,7 @@ function apiGet(apiPath, query, token) {
         .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
         .join('&');
     const fullPath = qs ? `${apiPath}?${qs}` : apiPath;
-    // GET 请求直接连接 API，不通过 CF Worker（CF Worker 只支持 POST）
-    return makeRequest(API_HOST, 443, fullPath, 'GET', headers, null, true);
+    return makeRequest(fullPath, 'GET', headers, null);
 }
 
 // ========== 静态文件 ==========
@@ -285,11 +248,7 @@ const server = http.createServer((req, res) => {
 
     // 健康检查
     if (req.url === '/api/health') {
-        return jsonResponse(res, {
-            status: 'ok',
-            cfWorkerUrl: CF_WORKER_URL || '(未设置 - 直连模式)',
-            mode: CF_WORKER_URL ? 'CF Worker 中转' : '直连 API'
-        });
+        return jsonResponse(res, { status: 'ok', mode: '直连 API' });
     }
 
     // ========== 代理 GET 请求 ==========
