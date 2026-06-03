@@ -153,9 +153,14 @@ function scheduleSignTask(taskId, taskData, signInDelay) {
 
 restoreTasks();
 
-// ========== WAF 检测 ==========
-function isWafBlocked(data) {
-    return data.includes('<title>405</title>') || data.includes('aliyun.com');
+// ========== WAF/错误检测 ==========
+function isBlockedResponse(data) {
+    // 检测 WAF 拦截
+    if (data.includes('<title>405</title>') || data.includes('aliyun.com')) return true;
+    // 检测非 JSON 响应（HTML、空响应等）
+    const trimmed = data.trim();
+    if (!trimmed || trimmed.startsWith('<') || trimmed.startsWith('<!')) return true;
+    return false;
 }
 
 // ========== API 请求（支持 CF Worker 中转 + 直连回退） ==========
@@ -166,14 +171,17 @@ function makeRequest(hostname, port, apiPath, method, headers, jsonBody, isFallb
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
-                // WAF 检测：如果被拦截且不是回退请求，尝试直连
-                if (isWafBlocked(data) && !isFallback) {
-                    console.log(`[API] CF Worker 被拦截，回退直连 API`);
+                // WAF/错误检测：如果被拦截或返回非 JSON，回退直连
+                if (isBlockedResponse(data) && !isFallback) {
+                    console.log(`[API] CF Worker 响应异常，回退直连 API`);
                     makeRequest(API_HOST, 443, apiPath, method, headers, jsonBody, true)
                         .then(resolve).catch(reject);
                     return;
                 }
-                try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+                try { resolve(JSON.parse(data)); } catch (e) {
+                    console.log(`[API] JSON 解析失败:`, data.substring(0, 100));
+                    reject(new Error('Invalid JSON response'));
+                }
             });
         });
         req.on('error', (e) => {
