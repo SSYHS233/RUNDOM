@@ -1,0 +1,12 @@
+{
+    "name": "rundom",
+    "version": "1.0.0",
+    "description": "RUNDOM - 跑步打卡 + 俱乐部签到签退助手",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js"
+    },
+    "engines": {
+        "node": ">=14"
+    }
+}

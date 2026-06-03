@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="theme-color" content="#ffffff">
+    <title>RUNDOM</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏃</text></svg>">
+</head>
+<body>
+    <div class="app" id="app">
+        <header class="header">
+            <div class="header-left">
+                <span class="header-logo">R</span>
+                <span class="header-brand">RUNDOM</span>
+                <span class="header-welcome" id="header-welcome"></span>
+            </div>
+            <div class="header-right">
+                <button class="header-icon" id="logout-btn" style="display:none;" title="退出">
+                    <i class="ri-logout-box-r-line"></i>
+                </button>
+            </div>
+        </header>
+
+        <div class="main" id="main-content">
+            <!-- 登录 -->
+            <div id="login-view">
+                <div class="login-card">
+                    <h2 class="login-title">RUNDOM</h2>
+                    <p class="login-sub">跑步打卡 + 俱乐部签到签退</p>
+                    <div class="field"><input type="text" id="phone" placeholder="手机号" autocomplete="off"></div>
+                    <div class="field"><input type="password" id="password" placeholder="密码" autocomplete="new-password"></div>
+                    <button class="btn btn-primary" id="login-btn">登 录</button>
+                    <div id="saved-accounts" class="hidden" style="margin-top:16px;">
+                        <div class="divider"></div>
+                        <div class="accounts-header"><span>快捷登录</span><button id="clear-accounts">清空</button></div>
+                        <div id="accounts-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 主界面 -->
+            <div id="main-view" class="hidden">
+
+                <!-- ===== 跑步 Tab ===== -->
+                <div class="tab-panel" id="panel-run">
+                    <!-- 完成情况 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">完成情况</span>
+                            <span class="card-meta" id="semester-end"></span>
+                        </div>
+                        <div class="stats-row">
+                            <div class="stat-item">
+                                <div class="stat-pct" id="pct-club">-</div>
+                                <div class="stat-detail" id="detail-club">-/-</div>
+                                <div class="stat-label">俱乐部活动</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-pct" id="pct-run">-</div>
+                                <div class="stat-detail" id="detail-run">-/-</div>
+                                <div class="stat-label">跑步次数</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-pct" id="pct-dist">-</div>
+                                <div class="stat-detail" id="detail-dist">-/-</div>
+                                <div class="stat-label">跑步距离(km)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 跑步打卡 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">跑步打卡</span>
+                            <span class="card-meta" id="distance-hint">1001 - 9000m</span>
+                        </div>
+                        <div class="field">
+                            <label>选择地图</label>
+                            <select id="map-select"><option value="">加载中...</option></select>
+                        </div>
+                        <div class="field">
+                            <label>跑步里程</label>
+                            <div class="input-row">
+                                <input type="number" id="distance" placeholder="2000" min="1000" max="10000">
+                                <span class="input-unit">米</span>
+                                <button class="btn-icon" id="random-distance-btn" title="随机"><i class="ri-dice-line"></i></button>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label>跑步时间</label>
+                            <div class="input-row">
+                                <input type="number" id="run-time" placeholder="12" min="5" max="60">
+                                <span class="input-unit">分钟</span>
+                            </div>
+                        </div>
+                        <div class="speed-bar hidden" id="speed-hint">
+                            <span class="speed-val" id="speed-value">-</span>
+                            <span class="speed-tag ok" id="speed-status">-</span>
+                            <span class="speed-pace" id="pace-value"></span>
+                        </div>
+                        <button class="btn btn-primary" id="upload-btn">GOGOGO</button>
+                    </div>
+
+                    <!-- 路线预览 -->
+                    <div class="card" id="preview-card" style="display:none;">
+                        <div class="card-header">
+                            <span class="card-title">路线预览</span>
+                        </div>
+                        <div id="map-preview" class="map-preview"></div>
+                    </div>
+                </div>
+
+                <!-- ===== 俱乐部 Tab ===== -->
+                <div class="tab-panel hidden" id="panel-club">
+                    <!-- 主标签：活动列表 / 历史记录 -->
+                    <div class="club-tabs">
+                        <button class="club-tab active" data-maintab="activities">活动列表</button>
+                        <button class="club-tab" data-maintab="history">历史记录</button>
+                    </div>
+
+                    <!-- 活动子标签 -->
+                    <div class="club-subtabs" id="subtabs-activities">
+                        <button class="club-subtab active" data-acttab="list">活动列表</button>
+                        <button class="club-subtab" data-acttab="myTask">我的任务</button>
+                    </div>
+
+                    <!-- 历史子标签 -->
+                    <div class="club-subtabs hidden" id="subtabs-history">
+                        <button class="club-subtab active" data-histtab="record">签到记录</button>
+                        <button class="club-subtab" data-histtab="semester">学期记录</button>
+                    </div>
+
+                    <!-- 日期选择 + 筛选 -->
+                    <div class="club-toolbar" id="club-toolbar">
+                        <div class="date-picker" id="date-picker-wrap">
+                            <button class="date-btn" id="date-btn">
+                                <span id="date-label">今天</span>
+                                <i class="ri-arrow-down-s-line"></i>
+                            </button>
+                            <div class="date-dropdown hidden" id="date-dropdown"></div>
+                        </div>
+                        <button class="filter-btn" id="filter-btn">
+                            <i class="ri-equalizer-line"></i><span>筛选</span>
+                        </button>
+                    </div>
+
+                    <!-- 筛选条件 -->
+                    <div class="filter-pills hidden" id="filter-section">
+                        <div class="pill-row" id="status-pills"></div>
+                    </div>
+
+                    <!-- 历史统计 -->
+                    <div class="summary-row hidden" id="history-summary">
+                        <div class="summary-item">
+                            <div class="summary-label">累计报名</div>
+                            <div class="summary-val" id="sum-join">0</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">有效签到</div>
+                            <div class="summary-val green" id="sum-valid">0</div>
+                        </div>
+                    </div>
+
+                    <!-- 签到任务卡片 -->
+                    <div id="sign-task-card" class="sign-card hidden"></div>
+
+                    <!-- 列表标题 -->
+                    <div class="list-header" id="club-list-header">
+                        <span id="club-list-title">活动列表</span>
+                        <span class="list-count" id="club-list-count"></span>
+                    </div>
+
+                    <!-- 活动列表 -->
+                    <div id="club-cards" class="card-list"></div>
+                    <div id="club-empty" class="club-empty hidden">暂无数据</div>
+                    <div id="club-loading" class="loading-hint hidden"><div class="spinner"></div> 加载中...</div>
+                    <button class="load-more-btn hidden" id="club-load-more">加载更多</button>
+                </div>
+
+                <!-- ===== 记录 Tab ===== -->
+                <div class="tab-panel hidden" id="panel-records">
+                    <div class="list-header"><span>跑步记录</span><span class="list-count" id="records-count"></span></div>
+                    <div id="records-list" class="card-list"></div>
+                    <div id="records-empty" class="empty-hint hidden">暂无跑步记录</div>
+                    <div id="records-loading" class="loading-hint hidden"><div class="spinner"></div> 加载中...</div>
+                    <button class="btn btn-outline" id="records-load-more" style="display:none;">加载更多</button>
+                </div>
+
+                <!-- ===== 我的 Tab ===== -->
+                <div class="tab-panel hidden" id="panel-my">
+                    <div class="card profile-card">
+                        <div class="profile-avatar"><i class="ri-user-3-line"></i></div>
+                        <div class="profile-info">
+                            <div class="profile-name" id="my-name">-</div>
+                            <div class="profile-code" id="my-code">-</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-outline" id="my-logout-btn" style="margin-top:12px;">退出登录</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 底部导航 -->
+        <nav class="bottom-bar" id="bottom-bar" style="display:none;">
+            <div class="bar-inner">
+                <div class="tab-indicator" id="tab-indicator"></div>
+                <button class="tab active" data-tab="run"><i class="ri-run-line"></i><span>跑步</span></button>
+                <button class="tab" data-tab="club"><i class="ri-map-pin-line"></i><span>俱乐部</span></button>
+                <button class="tab" data-tab="records"><i class="ri-file-list-3-line"></i><span>记录</span></button>
+                <button class="tab" data-tab="my"><i class="ri-user-3-line"></i><span>我的</span></button>
+            </div>
+        </nav>
+    </div>
+
+    <script src="js/md5.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/maps.js"></script>
+    <script src="js/track-v2.js"></script>
+    <script src="js/graph.js"></script>
+    <script src="js/track.js"></script>
+    <script>
+        // ========== 基础 ==========
+        function setVh(){document.getElementById('app').style.setProperty('--vh',window.innerHeight+'px');}
+        setVh();window.addEventListener('resize',setVh);window.addEventListener('orientationchange',setVh);
+
+        const SPEED_MIN=5,SPEED_MAX=11,SPEED_WARN_MIN=6,SPEED_WARN_MAX=10;
+        const LOCATIONS={'airport-t1':{name:'航空港第一田径场',lng:103.98622489368233,lat:30.58033741996674},'airport-t2':{name:'航空港第二田径场',lng:103.98718843948541,lat:30.58318128690287},'longquan':{name:'龙泉校区田径场',lng:104.30584131000948,lat:30.607158851944682}};
+        let isLoggedIn=false,currentTaskId=null,signTaskData=null,runStandard=null,userInfo=null,activityInfo=null;
+        let selectedMapId='';
+
+        function extractList(res){
+            if(!res||res.code!==10000||!res.response)return[];
+            const r=res.response;if(Array.isArray(r))return r;
+            if(r.list&&Array.isArray(r.list))return r.list;
+            if(r.records&&Array.isArray(r.records))return r.records;
+            if(r.data&&Array.isArray(r.data))return r.data;return[];
+        }
+
+        // ========== Tab Bar ==========
+        const tabs=document.querySelectorAll('.tab'),ind=document.getElementById('tab-indicator');
+        const panels={run:document.getElementById('panel-run'),club:document.getElementById('panel-club'),records:document.getElementById('panel-records'),my:document.getElementById('panel-my')};
+        function moveInd(b){const br=b.parentElement.getBoundingClientRect(),r=b.getBoundingClientRect();ind.style.left=(r.left-br.left+(r.width-44)/2)+'px';}
+        function switchTab(n){
+            tabs.forEach(b=>b.classList.remove('active'));
+            const a=document.querySelector('[data-tab="'+n+'"]');if(a){a.classList.add('active');moveInd(a);}
+            Object.entries(panels).forEach(([k,p])=>{if(p)p.classList.toggle('hidden',k!==n);});
+            if(n==='club'){loadClubData();}
+        }
+        tabs.forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+        setTimeout(()=>{const a=document.querySelector('.tab.active');if(a)moveInd(a);},100);
+
+        // ========== 俱乐部 ==========
+        let clubMainTab='activities',clubActTab='list',clubHistTab='record';
+        let clubQueryDate='',clubRecordPage=1,clubFilterStatus='all';
+
+        // 主标签切换
+        document.querySelectorAll('.club-tab').forEach(b=>b.addEventListener('click',()=>{
+            clubMainTab=b.dataset.maintab;
+            document.querySelectorAll('.club-tab').forEach(x=>x.classList.toggle('active',x===b));
+            document.getElementById('subtabs-activities').classList.toggle('hidden',clubMainTab!=='activities');
+            document.getElementById('subtabs-history').classList.toggle('hidden',clubMainTab!=='history');
+            document.getElementById('history-summary').classList.toggle('hidden',clubMainTab!=='history');
+            document.getElementById('date-picker-wrap').classList.toggle('hidden',clubMainTab!=='activities'||clubActTab!=='list');
+            document.getElementById('filter-btn').classList.toggle('hidden',clubMainTab!=='activities');
+            loadClubData();
+        }));
+
+        // 子标签切换
+        document.querySelectorAll('.club-subtab').forEach(b=>b.addEventListener('click',()=>{
+            const p=b.parentElement;
+            p.querySelectorAll('.club-subtab').forEach(x=>x.classList.remove('active'));
+            b.classList.add('active');
+            if(b.dataset.acttab){clubActTab=b.dataset.acttab;clubFilterStatus='all';}
+            if(b.dataset.histtab){clubHistTab=b.dataset.histtab;clubFilterStatus='all';}
+            document.getElementById('date-picker-wrap').classList.toggle('hidden',clubMainTab!=='activities'||clubActTab!=='list');
+            loadClubData();
+        }));
+
+        // 日期选择
+        function initDatePicker(){
+            const dd=document.getElementById('date-dropdown');
+            const days=['周日','周一','周二','周三','周四','周五','周六'];
+            let html='';
+            for(let i=0;i<7;i++){
+                const d=new Date();d.setDate(d.getDate()+i);
+                const ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+                const label=i===0?'今天':days[d.getDay()]+' '+(d.getMonth()+1)+'/'+d.getDate();
+                html+='<button class="date-option'+(i===0?' active':'')+'" data-date="'+ds+'">'+label+'</button>';
+            }
+            dd.innerHTML=html;
+            clubQueryDate=new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')+'-'+String(new Date().getDate()).padStart(2,'0');
+            document.getElementById('date-label').textContent='今天';
+        }
+        initDatePicker();
+
+        document.getElementById('date-btn').addEventListener('click',()=>{
+            document.getElementById('date-dropdown').classList.toggle('hidden');
+        });
+        document.getElementById('date-dropdown').addEventListener('click',e=>{
+            const opt=e.target.closest('.date-option');
+            if(!opt)return;
+            document.querySelectorAll('.date-option').forEach(o=>o.classList.remove('active'));
+            opt.classList.add('active');
+            clubQueryDate=opt.dataset.date;
+            document.getElementById('date-label').textContent=opt.textContent;
+            document.getElementById('date-dropdown').classList.add('hidden');
+            loadClubData();
+        });
+
+        // 筛选
+        document.getElementById('filter-btn').addEventListener('click',()=>{
+            document.getElementById('filter-section').classList.toggle('hidden');
+        });
+
+        function renderFilterPills(){
+            const el=document.getElementById('status-pills');
+            let options;
+            if(clubMainTab==='activities')options=['全部','已报名','可报名','报名已满','无法报名'];
+            else if(clubHistTab==='record')options=['全部','已完成','未签到','未签退'];
+            else options=['全部','已完成','未完成'];
+            el.innerHTML=options.map(o=>'<button class="pill'+(clubFilterStatus===o||clubFilterStatus==='all'&&o==='全部'?' active':'')+'" data-status="'+o+'">'+o+'</button>').join('');
+            el.querySelectorAll('.pill').forEach(p=>p.addEventListener('click',()=>{
+                clubFilterStatus=p.dataset.status==='全部'?'all':p.dataset.status;
+                renderFilterPills();
+                loadClubData();
+            }));
+        }
+        renderFilterPills();
+
+        // 加载数据
+        async function loadClubData(){
+            document.getElementById('club-loading').classList.remove('hidden');
+            document.getElementById('club-empty').classList.add('hidden');
+            try{
+                if(clubMainTab==='activities'){
+                    if(clubActTab==='list'){
+                        const r=await api.queryClubInfo(clubQueryDate);
+                        renderActivityCards(extractList(r));
+                    }else{
+                        const r=await api.queryMyActivities();
+                        renderMyTaskCards(extractList(r));
+                    }
+                    await loadSignTaskCard();
+                }else{
+                    if(clubHistTab==='record'){
+                        clubRecordPage=1;
+                        const r=await api.queryMyClubRecord(1,15);
+                        renderHistoryRecordCards(extractList(r));
+                        loadHistorySummary();
+                    }else{
+                        const r=await api.queryMyClubTask();
+                        renderSemesterCards(extractList(r));
+                    }
+                }
+            }catch(e){showToast('加载失败: '+e.message,'error');}
+            document.getElementById('club-loading').classList.add('hidden');
+        }
+
+        // 签到任务卡片
+        async function loadSignTaskCard(){
+            const el=document.getElementById('sign-task-card');
+            try{
+                const r=await api.getSignInTask();
+                if(r.code===10000&&r.response&&r.response.activityId){
+                    signTaskData=r.response;const t=r.response;
+                    const si=Number(t.signInStatus)===1,sb=Number(t.signBackStatus)===1;
+                    let phase='unsigned';
+                    if(si&&sb)phase='completed';else if(si)phase='signedIn';else phase='joined';
+                    const badgeMap={completed:['已完成','badge-blue'],signedIn:['已签到','badge-green'],joined:['已报名','badge-amber'],unsigned:['未签到','badge-gray']};
+                    const [bt,bc]=badgeMap[phase];
+                    let actions='';
+                    if(phase==='completed')actions='<button class="act-btn disabled" disabled>已完成</button>';
+                    else if(phase==='signedIn')actions='<button class="act-btn amber" onclick="doSignFromCard(\'2\')">签退</button>';
+                    else actions='<button class="act-btn green" onclick="doSignFromCard(\'1\')">签到</button>';
+
+                    el.innerHTML='<div class="sign-card-inner">'+
+                        '<div class="sign-logo"><i class="ri-shield-star-line"></i></div>'+
+                        '<div class="sign-content">'+
+                            '<div class="sign-top"><div class="sign-info"><div class="sign-title">'+(t.activityName||'当前任务')+'</div><div class="sign-sub">'+(t.addressDetail||t.address||'')+'</div></div><span class="badge '+bc+'">'+bt+'</span></div>'+
+                            '<div class="meta-grid">'+
+                                '<div class="meta-pill"><i class="ri-time-line"></i><span>'+(t.startTime||'--')+' - '+(t.endTime||'--')+'</span></div>'+
+                                '<div class="meta-pill"><i class="ri-login-circle-line"></i><span>签到: '+(t.signInTime||'--')+'</span></div>'+
+                                '<div class="meta-pill"><i class="ri-logout-circle-r-line"></i><span>签退: '+(t.signBackTime||t.signBackLimitTime||'--')+'</span></div>'+
+                            '</div>'+
+                            '<div class="sign-actions">'+actions+'</div>'+
+                        '</div></div>';
+                    el.classList.remove('hidden');
+                }else{el.classList.add('hidden');signTaskData=null;}
+            }catch(e){el.classList.add('hidden');}
+        }
+
+        function doSignFromCard(type){doSign(type);}
+
+        // 渲染活动卡片
+        // optionStatus: 6=未报名, 4=已报名, 1=已完成(推测)
+        function formatCap(a){
+            const signed=Number(a.signInStudent??a.joinStudentNum??0);
+            const max=Number(a.maxStudent??a.studentNum??0);
+            if(max<=0)return signed+'/不限';
+            return signed+'/'+max+' 人';
+        }
+        function isFull(a){
+            const signed=Number(a.signInStudent??a.joinStudentNum??0);
+            const max=Number(a.maxStudent??a.studentNum??0);
+            return max>0&&signed>=max;
+        }
+        function resolveActivityStatus(a){
+            const opt=Number(a.optionStatus);
+            const sign=Number(a.signStatus);
+            // optionStatus===4 表示已报名
+            if(opt===4){
+                if(sign===1)return{text:'已完成',cls:'badge-green',action:'disabled',label:'已完成'};
+                return{text:'已报名',cls:'badge-amber',action:'cancel',label:'取消报名'};
+            }
+            // optionStatus===1 可能也表示已完成
+            if(opt===1)return{text:'已完成',cls:'badge-green',action:'disabled',label:'已完成'};
+            // 未报名
+            if(isFull(a))return{text:'报名已满',cls:'badge-rose',action:'disabled',label:'已满员'};
+            return{text:'可报名',cls:'badge-cyan',action:'join',label:'报名'};
+        }
+
+        function renderActivityCards(list){
+            const el=document.getElementById('club-cards'),em=document.getElementById('club-empty'),ct=document.getElementById('club-list-count');
+            document.getElementById('club-list-title').textContent='活动列表（'+clubQueryDate+'）';
+            document.getElementById('club-load-more').classList.add('hidden');
+            if(!list.length){el.innerHTML='';em.classList.remove('hidden');ct.textContent='';return;}
+            em.classList.add('hidden');ct.textContent='共 '+list.length+' 条';
+            el.innerHTML=list.map(a=>{
+                const time=(a.startTime||'')+' - '+(a.endTime||'');
+                const st=resolveActivityStatus(a);
+                let actionHtml='';
+                if(st.action==='join')actionHtml='<button class="act-btn primary" onclick="joinActivity('+a.clubActivityId+')">'+st.label+'</button>';
+                else if(st.action==='cancel')actionHtml='<button class="act-btn rose" onclick="cancelActivity('+a.clubActivityId+')">'+st.label+'</button>';
+                else actionHtml='<button class="act-btn disabled" disabled>'+st.label+'</button>';
+                return'<div class="club-card"><div class="club-card-top"><div class="club-card-info"><div class="club-card-name">'+(a.activityName||'活动')+'</div>'+(a.teacherName?'<div class="club-card-sub">'+a.teacherName+'</div>':'')+'</div><span class="badge '+st.cls+'">'+st.text+'</span></div><div class="meta-grid"><div class="meta-pill"><i class="ri-time-line"></i><span>'+time+'</span></div><div class="meta-pill"><i class="ri-team-line"></i><span>'+formatCap(a)+'</span></div><div class="meta-pill full"><i class="ri-map-pin-line"></i><span>'+(a.addressDetail||a.address||'地点待定')+'</span></div></div><div class="club-card-action">'+actionHtml+'</div></div>';
+            }).join('');
+        }
+
+        // 渲染我的任务卡片
+        function renderMyTaskCards(list){
+            const el=document.getElementById('club-cards'),em=document.getElementById('club-empty'),ct=document.getElementById('club-list-count');
+            document.getElementById('club-list-title').textContent='我的任务';
+            document.getElementById('club-load-more').classList.add('hidden');
+            document.getElementById('sign-task-card').classList.add('hidden');
+            if(!list.length){el.innerHTML='';em.classList.remove('hidden');ct.textContent='';return;}
+            em.classList.add('hidden');ct.textContent='共 '+list.length+' 条';
+            el.innerHTML=list.map(a=>{
+                const si=Number(a.signInStatus)===1,sb=Number(a.signBackStatus)===1;
+                const opt=Number(a.optionStatus);
+                let badge='<span class="badge badge-amber">已报名</span>';
+                if(si&&sb)badge='<span class="badge badge-blue">已完成</span>';
+                else if(si)badge='<span class="badge badge-green">已签到</span>';
+                return'<div class="club-card"><div class="club-card-top"><div class="club-card-info"><div class="club-card-name">'+(a.activityName||'任务')+'</div>'+(a.teacherName?'<div class="club-card-sub">'+a.teacherName+'</div>':'')+'</div>'+badge+'</div><div class="meta-grid"><div class="meta-pill"><i class="ri-time-line"></i><span>'+(a.startTime||'')+' - '+(a.endTime||'')+'</span></div><div class="meta-pill"><i class="ri-map-pin-line"></i><span>'+(a.addressDetail||a.address||'待定')+'</span></div></div></div>';
+            }).join('');
+        }
+
+        // 渲染签到记录
+        function renderHistoryRecordCards(list){
+            const el=document.getElementById('club-cards'),em=document.getElementById('club-empty'),ct=document.getElementById('club-list-count'),more=document.getElementById('club-load-more');
+            document.getElementById('club-list-title').textContent='签到记录';
+            document.getElementById('sign-task-card').classList.add('hidden');
+            if(!list.length){el.innerHTML='';em.classList.remove('hidden');ct.textContent='';more.classList.add('hidden');return;}
+            em.classList.add('hidden');ct.textContent='共 '+list.length+' 条';
+            const existing=clubRecordPage>1?el.innerHTML:'';
+            el.innerHTML=existing+list.map(r=>{
+                const ok=r.signStatus===1||r.signStatus==='1';
+                const badge=ok?'<span class="badge badge-green">已完成</span>':'<span class="badge badge-gray">未签到</span>';
+                return'<div class="club-card"><div class="club-card-top"><div class="club-card-info"><div class="club-card-name">'+(r.activityName||'签到')+'</div></div>'+badge+'</div><div class="meta-grid"><div class="meta-pill"><i class="ri-time-line"></i><span>'+(r.signInTime||r.createTime||'-')+'</span></div><div class="meta-pill"><i class="ri-map-pin-line"></i><span>'+(r.address||'待定')+'</span></div></div></div>';
+            }).join('');
+            more.classList.toggle('hidden',list.length<15);
+        }
+
+        // 渲染学期记录
+        function renderSemesterCards(list){
+            const el=document.getElementById('club-cards'),em=document.getElementById('club-empty');
+            document.getElementById('club-list-title').textContent='学期记录';
+            document.getElementById('club-load-more').classList.add('hidden');
+            document.getElementById('sign-task-card').classList.add('hidden');
+            if(!list.length){el.innerHTML='';em.classList.remove('hidden');return;}
+            em.classList.add('hidden');
+            el.innerHTML=list.map(r=>{
+                const ok=r.signStatus===1||r.signStatus==='1';
+                const badge=ok?'<span class="badge badge-green">已完成</span>':'<span class="badge badge-gray">未完成</span>';
+                return'<div class="club-card"><div class="club-card-top"><div class="club-card-info"><div class="club-card-name">'+(r.activityName||'活动')+'</div></div>'+badge+'</div><div class="meta-grid"><div class="meta-pill"><i class="ri-time-line"></i><span>'+(r.startTime||'')+' - '+(r.endTime||'')+'</span></div><div class="meta-pill"><i class="ri-map-pin-line"></i><span>'+(r.addressDetail||'待定')+'</span></div></div></div>';
+            }).join('');
+        }
+
+        // 历史统计
+        async function loadHistorySummary(){
+            try{const sr=await api.countValidSignUp();if(sr.code===10000&&sr.response){const list=extractList(sr);const f=list[0]||(typeof sr.response==='object'?sr.response:{});document.getElementById('sum-join').textContent=Number(f.joinNum||0);document.getElementById('sum-valid').textContent=Number(f.validNum||0);}}catch(e){}
+        }
+
+        // 报名/取消
+        async function joinActivity(id){
+            try{
+                const r=await api.joinClub(id);
+                if(r.code===10000){
+                    // code=10000 但 response.status 可能是 "0" 表示被拒绝
+                    const status=String(r.response?.status||'');
+                    const msg=r.response?.message||'';
+                    if(status==='1'||status===''){
+                        showToast('报名成功','success');
+                        await loadClubData();
+                    }else{
+                        showToast(msg||'报名失败','warn');
+                    }
+                }else{
+                    showToast(r.msg||'报名失败','error');
+                }
+            }catch(e){showToast('报名异常: '+e.message,'error');}
+        }
+        async function cancelActivity(id){
+            try{
+                const r=await api.cancelClub(id);
+                if(r.code===10000){
+                    const status=String(r.response?.status||'');
+                    const msg=r.response?.message||'';
+                    if(status==='1'||status===''){
+                        showToast('已取消报名','success');
+                        await loadClubData();
+                    }else{
+                        showToast(msg||'取消失败','warn');
+                    }
+                }else{
+                    showToast(r.msg||'取消失败','error');
+                }
+            }catch(e){showToast('取消异常: '+e.message,'error');}
+        }
+
+        // 加载更多
+        document.getElementById('club-load-more').addEventListener('click',async()=>{
+            clubRecordPage++;try{const r=await api.queryMyClubRecord(clubRecordPage,15);const list=extractList(r);renderHistoryRecordCards(list);}catch(e){}
+        });
+
+        // ========== 账号记忆 ==========
+        const ACC_KEY='rundom_accounts';
+        function getAcc(){try{return JSON.parse(localStorage.getItem(ACC_KEY))||[];}catch{return[];}}
+        function saveAcc(p,pw,n){const a=getAcc(),i=a.findIndex(x=>x.phone===p);const r={phone:p,password:pw,name:n,time:Date.now()};if(i>=0)a[i]=r;else a.unshift(r);if(a.length>5)a.pop();localStorage.setItem(ACC_KEY,JSON.stringify(a));renderAcc();}
+        function delAcc(p){localStorage.setItem(ACC_KEY,JSON.stringify(getAcc().filter(a=>a.phone!==p)));renderAcc();}
+        function clrAcc(){localStorage.removeItem(ACC_KEY);renderAcc();}
+        function renderAcc(){const a=getAcc(),c=document.getElementById('saved-accounts'),l=document.getElementById('accounts-list');if(!a.length){c.classList.add('hidden');return;}c.classList.remove('hidden');l.innerHTML=a.map(x=>'<div class="acc-item" onclick="fillAcc(\''+x.phone+'\',\''+x.password+'\')"><div><div class="acc-phone">'+x.phone+'</div><div class="acc-name">'+(x.name||'')+'</div></div><button onclick="event.stopPropagation();delAcc(\''+x.phone+'\')" class="acc-del"><i class="ri-close-line"></i></button></div>').join('');}
+        function fillAcc(p,pw){document.getElementById('phone').value=p;document.getElementById('password').value=pw;}
+        document.getElementById('clear-accounts').addEventListener('click',clrAcc);renderAcc();
+
+        // ========== 地图 ==========
+        Promise.all([graph.load('data/map.json'),mapLoader.loadAll()]).then(()=>populateMap()).catch(()=>showToast('地图加载失败','error'));
+        function populateMap(){const s=document.getElementById('map-select'),ids=mapLoader.getMapIds();if(!ids.length){s.innerHTML='<option>无地图</option>';return;}s.innerHTML=ids.map(id=>'<option value="'+id+'">'+mapLoader.getMapName(id)+'</option>').join('');selectedMapId=ids[0];}
+        document.getElementById('map-select').addEventListener('change',e=>{selectedMapId=e.target.value;});
+
+        // ========== 速度 ==========
+        function updSpeed(){
+            const d=parseInt(document.getElementById('distance').value),t=parseInt(document.getElementById('run-time').value);
+            const h=document.getElementById('speed-hint'),sv=document.getElementById('speed-value'),st=document.getElementById('speed-status'),pv=document.getElementById('pace-value');
+            if(!d||!t){h.classList.add('hidden');return;}h.classList.remove('hidden');
+            const s=(d/(t*60)*3.6).toFixed(1);sv.textContent=s+' km/h';
+            const p=t/(d/1000),pm=Math.floor(p),ps=Math.round((p-pm)*60);pv.textContent=pm+"'"+String(ps).padStart(2,'0')+"''/km";
+            if(s<SPEED_MIN||s>SPEED_MAX){st.textContent='超速';st.className='speed-tag err';}
+            else if(s<SPEED_WARN_MIN||s>SPEED_WARN_MAX){st.textContent='偏';st.className='speed-tag warn';}
+            else{st.textContent='正常';st.className='speed-tag ok';}
+        }
+        document.getElementById('distance').addEventListener('input',updSpeed);
+        document.getElementById('run-time').addEventListener('input',updSpeed);
+
+        document.getElementById('random-distance-btn').addEventListener('click',()=>{
+            const mn=runStandard?(runStandard.boyOnceDistanceMin||1001):1001,mx=runStandard?(runStandard.boyOnceDistanceMax||9000):9000;
+            const d=trackGenV2.randomDistance(mn,mx);document.getElementById('distance').value=d;
+            document.getElementById('run-time').value=trackGenV2.suggestTime(d);updSpeed();
+        });
+
+        // ========== 登录 ==========
+        document.getElementById('login-btn').addEventListener('click',async()=>{
+            const ph=document.getElementById('phone').value.trim(),pw=document.getElementById('password').value.trim();
+            if(!ph||!pw){showToast('请输入手机号和密码','warn');return;}
+            const btn=document.getElementById('login-btn');btn.disabled=true;btn.innerHTML='<div class="spinner"></div> 登录中';
+            try{
+                const res=await api.login(ph,pw);
+                if(res.code===10000&&res.response){
+                    isLoggedIn=true;const nm=res.response.studentName||ph;
+                    showToast('欢迎 '+nm,'success');saveAcc(ph,pw,nm);
+                    document.getElementById('login-view').classList.add('hidden');
+                    document.getElementById('main-view').classList.remove('hidden');
+                    document.getElementById('header-welcome').textContent='Hi, '+nm;
+                    document.getElementById('logout-btn').style.display='';
+                    document.getElementById('bottom-bar').style.display='';
+                    document.getElementById('my-name').textContent=nm;
+                    document.getElementById('my-code').textContent='ID: '+api.studentId;
+                    switchTab('run');
+                    setTimeout(()=>{ensureMap();genDefaultPreview();},300);
+                    await Promise.all([fetchStandard(),fetchStats(),loadRecords(1,true)]);
+                }else{showToast(res.msg||'登录失败','error');}
+            }catch(e){showToast('登录异常','error');}
+            finally{btn.disabled=false;btn.innerHTML='登 录';}
+        });
+
+        // 退出
+        function doLogout(){
+            isLoggedIn=false;api.token='';api.userId=0;api.studentId=0;signTaskData=null;runStandard=null;userInfo=null;activityInfo=null;
+            document.getElementById('login-view').classList.remove('hidden');
+            document.getElementById('main-view').classList.add('hidden');
+            document.getElementById('header-welcome').textContent='';
+            document.getElementById('logout-btn').style.display='none';
+            document.getElementById('bottom-bar').style.display='none';
+            document.getElementById('sign-task-card').classList.add('hidden');
+            showToast('已退出','info');
+        }
+        document.getElementById('logout-btn').addEventListener('click',doLogout);
+        document.getElementById('my-logout-btn').addEventListener('click',doLogout);
+
+        // ========== 上传 ==========
+        document.getElementById('upload-btn').addEventListener('click',async()=>{
+            if(!isLoggedIn){showToast('请先登录','warn');return;}
+            const d=parseInt(document.getElementById('distance').value)||2000,t=parseInt(document.getElementById('run-time').value)||12,sp=d/(t*60)*3.6;
+            if(sp<SPEED_MIN){showToast('速度过慢','error');return;}if(sp>SPEED_MAX){showToast('速度过快','error');return;}
+            const btn=document.getElementById('upload-btn');btn.disabled=true;btn.innerHTML='<div class="spinner"></div> 提交中';
+            try{
+                let tp='';
+                if(selectedMapId&&mapLoader.getMapData(selectedMapId).length>0){tp=trackGenV2.genTrackPoints(d,selectedMapId,t);if(tp==='[]')tp='';}
+                else if(graph.nodes.length>0){const sn=graph.nodes[Math.floor(Math.random()*graph.nodes.length)];const r=graph.generateLongRoute(sn.id,d);if(r&&r.path.length>=2)tp=trackGenerator.formatForApi(trackGenerator.generateTrackPoints(r.path,t*60));}
+                const now=new Date();const rd=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+                const body={againRunStatus:'0',againRunTime:0,appVersions:'1.8.5',brand:'Apple',mobileType:'iPhone',sysVersions:'18.6',trackPoints:tp,distanceTimeStatus:'1',innerSchool:'1',runDistance:Math.round(d),runTime:Math.round(t),userId:Number(api.userId),vocalStatus:'1',yearSemester:'',recordDate:rd,realityTrackPoints:tp};
+                const res=await api.uploadRecord(body);
+                if(res.code===10000){showToast('打卡成功！','success');btn.classList.add('success-flash');setTimeout(()=>btn.classList.remove('success-flash'),1000);fetchStats();loadRecords(1,true);}
+                else{showToast('失败: '+res.msg,'error');}
+            }catch(e){showToast('异常','error');}
+            finally{btn.disabled=false;btn.innerHTML='GOGOGO';}
+        });
+
+        // ========== 签到/签退 ==========
+        async function doSign(type){
+            if(!isLoggedIn){showToast('请先登录','warn');return;}
+            const loc=LOCATIONS['airport-t1'];
+            const txt=type==='1'?'签到':'签退';
+            let aid;
+            if(signTaskData&&signTaskData.activityId)aid=signTaskData.activityId;
+            else{try{const r=await api.queryMyActivities(1,5);const l=extractList(r);if(l.length>0)aid=l[0].clubActivityId;else{showToast('无可用活动','error');return;}}catch(e){return;}}
+            showToast(txt+'中...','info');
+            try{
+                const r=await api.signInOrSignBack(aid,loc.lat,loc.lng,type);
+                if(r.code===10000){showToast(txt+'成功！','success');await loadSignTaskCard();}
+                else{showToast(txt+'失败: '+(r.msg||''),'error');}
+            }catch(e){showToast('异常','error');}
+        }
+
+        // ========== 标准 & 统计 ==========
+        async function fetchStandard(){try{const r=await api.getRunStandard(api.schoolId);if(r.code===10000&&r.response){runStandard=r.response;const mn=runStandard.boyOnceDistanceMin||1001,mx=runStandard.boyOnceDistanceMax||9000;document.getElementById('distance-hint').textContent=mn+' - '+mx+'m';document.getElementById('distance').min=mn;document.getElementById('distance').max=mx;}}catch(e){}}
+
+        async function fetchStats(){
+            try{
+                const tr=await api.getTokenInfo();if(tr.code===10000&&tr.response)userInfo=tr.response;
+
+                // 俱乐部统计
+                if(api.studentId&&api.schoolId){
+                    const cr=await api.getJoinNum(api.schoolId,api.studentId);
+                    if(cr.code===10000&&cr.response){
+                        activityInfo=cr.response;
+                        const jn=Number(cr.response.joinNum||0),tn=Number(cr.response.totalNum||0);
+                        const pct=tn>0?Math.round(jn/tn*100):0;
+                        document.getElementById('pct-club').textContent=pct+'%';
+                        document.getElementById('detail-club').textContent=jn+'/'+tn;
+                    }
+                }
+
+                // 跑步统计（需要学期参数）
+                if(userInfo&&userInfo.userId){
+                    const now=new Date();
+                    const semester=(runStandard&&runStandard.semesterYear)||now.getFullYear()+''+(now.getMonth()+1<8?'1':'2');
+                    const ri=await api.getRunInfo(userInfo.userId,semester);
+                    if(ri.code===10000&&ri.response){
+                        const run=ri.response;
+                        const std=runStandard||{};
+                        const gender=String(userInfo.gender||'');
+
+                        // 跑步次数
+                        const rc=Number(run.runValidCount||0);
+                        const rt=gender==='1'?Number(std.boyAllRunTime||0):gender==='2'?Number(std.girlAllRunTime||0):0;
+                        const rpct=rt>0?Math.min(100,Math.round(rc/rt*100)):0;
+                        document.getElementById('pct-run').textContent=rpct+'%';
+                        document.getElementById('detail-run').textContent=rc+'/'+rt;
+
+                        // 跑步距离 (runValidDistance 单位是米)
+                        const rd=Number(run.runValidDistance||0);
+                        const rdKm=Math.floor(rd/1000*10)/10;
+                        const distTargetM=gender==='1'?Number(std.boyAllRunDistance||0):gender==='2'?Number(std.girlAllRunDistance||0):0;
+                        const distTargetKm=(distTargetM/1000).toFixed(1);
+                        const dpct=distTargetM>0?Math.min(100,Math.round(rd/distTargetM*100)):0;
+                        document.getElementById('pct-dist').textContent=dpct+'%';
+                        document.getElementById('detail-dist').textContent=rdKm.toFixed(1)+'/'+distTargetKm;
+                    }
+                }
+            }catch(e){}
+        }
+
+        // ========== 跑步记录 ==========
+        let recordsPage=1;
+        async function loadRecords(page,reset){
+            if(reset){recordsPage=1;document.getElementById('records-list').innerHTML='';}
+            recordsPage=page;
+            document.getElementById('records-loading').classList.remove('hidden');
+            try{const r=await api.getRunRecords(page,15);const list=extractList(r);
+            renderRecords(list,page>1||!reset);
+            document.getElementById('records-loading').classList.add('hidden');
+            }catch(e){document.getElementById('records-loading').classList.add('hidden');}
+        }
+
+        function renderRecords(list,append){
+            const el=document.getElementById('records-list'),em=document.getElementById('records-empty'),more=document.getElementById('records-load-more'),ct=document.getElementById('records-count');
+            if(!list.length&&!append){el.innerHTML='';em.classList.remove('hidden');more.style.display='none';ct.textContent='';return;}
+            em.classList.add('hidden');
+            const existing=append?el.innerHTML:'';
+            el.innerHTML=existing+list.map(r=>{
+                const d=r.runDistance||0,t=r.runTime||0;
+                const p=d>0&&t>0?(t/(d/1000)):0,pm=Math.floor(p),ps=Math.round((p-pm)*60);
+                const ok=r.runStatus==='1'||r.runStatus===1;
+                const statusText=r.defeatedInfo||(ok?'有效':'无效');
+                const date=r.createTime||'-';
+                return'<div class="rec-card"><div class="rec-top"><span class="rec-date">'+date+'</span><span class="rec-status '+(ok?'s-ok':'s-err')+'">'+statusText+'</span></div><div class="rec-detail"><div class="rec-item"><span class="rec-label">距离</span><span class="rec-val">'+(d/1000).toFixed(2)+'km</span></div><div class="rec-item"><span class="rec-label">时间</span><span class="rec-val">'+t+'分钟</span></div><div class="rec-item"><span class="rec-label">配速</span><span class="rec-val mono">'+pm+"'"+String(ps).padStart(2,'0')+"''/km</span></div></div></div>";
+            }).join('');
+            more.style.display=list.length>=15?'':'none';
+            ct.textContent='';
+        }
+
+        document.getElementById('records-load-more').addEventListener('click',()=>{loadRecords(recordsPage+1,true);});
+
+        // ========== Toast ==========
+        // ========== 路线预览 (Leaflet + 高德瓦片) ==========
+        let mapInstance=null,mapPolyline=null,mapMarkers=[],mapAnimTimer=null,mapDrawVersion=0;
+
+        function initMap(){
+            if(mapInstance)return;
+            try{
+                mapInstance=L.map('map-preview',{
+                    zoomControl:false,attributionControl:false,
+                    preferCanvas:true,zoomSnap:0.5,zoomDelta:0.5
+                }).setView([30.580,103.986],15);
+                L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}',{
+                    subdomains:'1234',minZoom:3,maxZoom:19,keepBuffer:2
+                }).addTo(mapInstance);
+            }catch(e){console.error('地图初始化失败:',e);}
+        }
+
+        // 登录后初始化地图（此时容器可见）
+        function ensureMap(){
+            if(!mapInstance)initMap();
+        }
+
+        function clearMapLayers(){
+            if(!mapInstance)return;
+            if(mapPolyline){mapInstance.removeLayer(mapPolyline);mapPolyline=null;}
+            mapMarkers.forEach(m=>mapInstance.removeLayer(m));mapMarkers=[];
+            if(mapAnimTimer){clearInterval(mapAnimTimer);mapAnimTimer=null;}
+        }
+
+        function parseTrackPoints(trackJson){
+            try{
+                const arr=typeof trackJson==='string'?JSON.parse(trackJson):trackJson;
+                if(!Array.isArray(arr))return[];
+                return arr.map(p=>{
+                    if(typeof p==='string'){
+                        const parts=p.split('-');
+                        if(parts.length>=2){const lng=parseFloat(parts[0]),lat=parseFloat(parts[1]);if(!isNaN(lng)&&!isNaN(lat))return[lat,lng];}
+                    }
+                    if(p&&p.lat!==undefined&&p.lng!==undefined)return[p.lat,p.lng];
+                    return null;
+                }).filter(Boolean);
+            }catch(e){return[];}
+        }
+
+        function animateTrack(latlngs){
+            if(!mapInstance)return;
+            mapDrawVersion++;const ver=mapDrawVersion;
+            clearMapLayers();
+            if(latlngs.length<2)return;
+
+            const startIcon=L.divIcon({html:'<div style="width:26px;height:26px;background:#10b981;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,0.3);">起</div>',className:'',iconSize:[26,26],iconAnchor:[13,13]});
+            mapMarkers.push(L.marker(latlngs[0],{icon:startIcon,interactive:false,keyboard:false}).addTo(mapInstance));
+
+            const endIcon=L.divIcon({html:'<div style="width:26px;height:26px;background:#f97316;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,0.3);">终</div>',className:'',iconSize:[26,26],iconAnchor:[13,13]});
+            mapMarkers.push(L.marker(latlngs[latlngs.length-1],{icon:endIcon,interactive:false,keyboard:false}).addTo(mapInstance));
+
+            mapPolyline=L.polyline([],{color:'#38bdf8',weight:5,opacity:0.9,lineCap:'round',lineJoin:'round'}).addTo(mapInstance);
+
+            let idx=0;const step=Math.max(1,Math.ceil((latlngs.length-1)/60));
+            mapAnimTimer=setInterval(()=>{
+                if(ver!==mapDrawVersion)return;
+                for(let i=0;i<step&&idx<latlngs.length;idx++,i++)mapPolyline.addLatLng(latlngs[idx]);
+                if(idx>=latlngs.length){clearInterval(mapAnimTimer);mapAnimTimer=null;}
+            },30);
+
+            setTimeout(()=>{if(ver===mapDrawVersion&&mapInstance)mapInstance.fitBounds(L.latLngBounds(latlngs),{padding:[48,48],maxZoom:18,animate:true,duration:0.55});},100);
+        }
+
+        function showPreview(trackJson){
+            const pts=parseTrackPoints(trackJson);
+            if(pts.length<2)return;
+            document.getElementById('preview-card').style.display='';
+            ensureMap();
+            setTimeout(()=>{if(mapInstance){mapInstance.invalidateSize();animateTrack(pts);}},150);
+        }
+
+        // 随机按钮触发预览
+        document.getElementById('random-distance-btn').addEventListener('click',()=>{
+            setTimeout(()=>{
+                const d=parseInt(document.getElementById('distance').value)||2000;
+                const t=parseInt(document.getElementById('run-time').value)||12;
+                if(selectedMapId&&mapLoader.getMapData(selectedMapId).length>0){
+                    const tp=trackGenV2.genTrackPoints(d,selectedMapId,t);
+                    if(tp&&tp!=='[]')showPreview(tp);
+                }
+            },100);
+        });
+
+        // 地图选择变化也触发预览
+        document.getElementById('map-select').addEventListener('change',()=>{
+            const d=parseInt(document.getElementById('distance').value)||2000;
+            const t=parseInt(document.getElementById('run-time').value)||12;
+            if(d&&t&&selectedMapId&&mapLoader.getMapData(selectedMapId).length>0){
+                const tp=trackGenV2.genTrackPoints(d,selectedMapId,t);
+                if(tp&&tp!=='[]')showPreview(tp);
+            }
+        });
+
+        // 生成默认预览
+        function genDefaultPreview(){
+            const d=parseInt(document.getElementById('distance').value)||2000;
+            const t=parseInt(document.getElementById('run-time').value)||12;
+            if(selectedMapId&&mapLoader.getMapData(selectedMapId).length>0){
+                const tp=trackGenV2.genTrackPoints(d,selectedMapId,t);
+                if(tp&&tp!=='[]')showPreview(tp);
+            }
+        }
+
+        // Toast
+        function showToast(msg,type){
+            type=type||'info';const icons={success:'ri-check-line',error:'ri-close-line',info:'ri-information-line',warn:'ri-alert-line'};
+            const t=document.createElement('div');t.className='toast toast-'+type;
+            t.innerHTML='<i class="'+(icons[type]||icons.info)+' toast-icon"></i><span>'+msg+'</span>';
+            document.body.appendChild(t);requestAnimationFrame(()=>t.classList.add('show'));
+            setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),400);},2500);
+        }
+    </script>
+</body>
+</html>
