@@ -5,6 +5,7 @@ const fs = require('fs');
 
 const app = express();
 const port = process.env.PORT || 8080;
+const CF_WORKER_URL = process.env.CF_WORKER_URL || '';
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -27,7 +28,8 @@ app.use(express.static(path.join(__dirname)));
 
 // API 代理
 app.all('/v1/*', async (req, res) => {
-    const backendUrl = 'https://run-lb.tanmasports.com' + req.originalUrl;
+    const apiUrl = CF_WORKER_URL || 'https://run-lb.tanmasports.com';
+    const backendUrl = apiUrl + req.originalUrl;
 
     const newHeaders = { ...req.headers };
     delete newHeaders.host;
@@ -57,7 +59,10 @@ app.all('/v1/*', async (req, res) => {
 
 // 健康检查
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok' });
+    res.json({
+        status: 'ok',
+        mode: CF_WORKER_URL ? 'CF Worker 中转' : '直连 API'
+    });
 });
 
 // 定时任务存储
