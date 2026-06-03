@@ -1,5 +1,5 @@
 /**
- * RUNDOM API 通信模块
+ * RUNDOM API 通信模块（直连模式）
  */
 class RundomApi {
     constructor() {
@@ -7,22 +7,70 @@ class RundomApi {
         this.userId = 0;
         this.studentId = 0;
         this.schoolId = 0;
+        this.baseUrl = 'https://run-lb.tanmasports.com';
+        this.appkey = '389885588s0648fa';
+        this.secret2 = '56E39A1658455588885690425C0FD16055A21676';
     }
 
     async _post(path, body) {
-        const res = await fetch(path, {
+        const sign = this._genSign({ body });
+        const res = await fetch(this.baseUrl + path, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...body, _token: this.token })
+            headers: {
+                'Content-Type': 'application/json; charset=UTF-8',
+                'sign': sign,
+                'token': this.token || '',
+                'appkey': this.appkey
+            },
+            body: JSON.stringify(body)
         });
         return await res.json();
     }
 
     async _get(path, query = {}) {
+        const sign = this._genSign({ query });
         const params = new URLSearchParams(query);
-        params.set('_token', this.token);
-        const res = await fetch(`${path}?${params.toString()}`);
+        const url = this.baseUrl + path + (params.toString() ? '?' + params.toString() : '');
+        const res = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json; charset=UTF-8',
+                'sign': sign,
+                'token': this.token || '',
+                'appkey': this.appkey
+            }
+        });
         return await res.json();
+    }
+
+    _genSign({ query = null, body = null }) {
+        let signStr = '';
+
+        if (query !== null) {
+            const sortedKeys = Object.keys(query).sort();
+            for (const key of sortedKeys) {
+                const value = query[key] === null ? '' : String(query[key]);
+                if (value !== '') signStr += key + value;
+            }
+        }
+
+        signStr += this.appkey + this.secret2;
+
+        if (body !== null) signStr += JSON.stringify(body);
+
+        let replaced = false;
+        const specialChars = [' ', '~', '!', '(', ')', "'"];
+        for (const ch of specialChars) {
+            if (signStr.includes(ch)) {
+                signStr = signStr.split(ch).join('');
+                replaced = true;
+            }
+        }
+        if (replaced) signStr = encodeURIComponent(signStr);
+
+        let sign = md5(signStr).toUpperCase();
+        if (replaced) sign += 'encodeutf8';
+        return sign;
     }
 
     // 登录
